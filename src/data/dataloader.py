@@ -15,13 +15,16 @@ from src.config import config
 class Flickr30kDataset(Dataset):
     """Dataset class for Flickr30k"""
     
-    def __init__(self, split: str = "train"):
+    def __init__(self, split: str = "test"):
         """
         Initialize the dataset
         Args:
-            split (str): Dataset split ('train', 'validation', or 'test')
+            split (str): Dataset split (currently only 'test' is available)
         """
-        self.dataset = load_dataset("flickr30k", split=split)
+        if split != "test":
+            raise ValueError(f"Only 'test' split is available for {config.data.dataset_name}")
+        
+        self.dataset = load_dataset(config.data.dataset_name, split=split)
         self.tokenizer = CLIPTokenizer.from_pretrained(config.model.clip_model_name)
         
         # Image preprocessing
@@ -46,11 +49,16 @@ class Flickr30kDataset(Dataset):
         item = self.dataset[idx]
         
         # Process image
-        image = Image.open(item['image'].convert('RGB'))
+        image = item['image']  # This is already a PIL Image
         image = self.image_transform(image)
         
-        # Get caption and tokenize
-        caption = item['captions'][0]
+        # Get caption (key might be 'caption' instead of 'captions')
+        caption = item['caption'] if 'caption' in item else item['text']
+        
+        # Handle if caption is a list
+        if isinstance(caption, list):
+            caption = caption[0]
+        
         tokenized = self.tokenizer(
             caption,
             padding='max_length',
@@ -66,11 +74,11 @@ class Flickr30kDataset(Dataset):
             'caption': caption  # Keep original caption for reference
         }
 
-def get_dataloader(split: str = "train") -> DataLoader:
+def get_dataloader(split: str = "test") -> DataLoader:
     """
     Create a DataLoader for the specified split
     Args:
-        split (str): Dataset split ('train', 'validation', or 'test')
+        split (str): Dataset split (currently only 'test' is available)
     Returns:
         DataLoader for the specified split
     """

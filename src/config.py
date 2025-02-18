@@ -1,5 +1,6 @@
 from dataclasses import dataclass
 from typing import Optional
+import torch
 
 @dataclass
 class ModelConfig:
@@ -19,7 +20,7 @@ class ModelConfig:
 @dataclass
 class DataConfig:
     # Dataset configurations
-    dataset_name: str = "flickr30k"
+    dataset_name: str = "nlphuji/flickr30k"
     train_batch_size: int = 32
     eval_batch_size: int = 32
     num_workers: int = 4

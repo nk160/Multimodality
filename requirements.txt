@@ -21,6 +21,7 @@ wandb>=0.15.0
 tqdm>=4.65.0
 pandas>=2.0.0
 matplotlib>=3.7.0
+pytest>=7.3.1
 
 # API and deployment
 fastapi>=0.95.0
