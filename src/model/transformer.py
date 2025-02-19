@@ -111,8 +111,10 @@ class ImageCaptioningTransformer(nn.Module):
         encoder_states = self.encode_images(images)
         
         # Ensure encoder states have correct shape
+        # CLIP encoder outputs [batch_size, hidden_size]
+        # Need [batch_size, 1, hidden_size] for attention
         if len(encoder_states.shape) == 2:
-            encoder_states = encoder_states.unsqueeze(0)  # Add sequence length dimension
+            encoder_states = encoder_states.unsqueeze(1)  # Add sequence length dimension
         
         # Generate with controlled parameters
         return self.decoder.generate(
@@ -179,7 +181,9 @@ class DecoderBlock(nn.Module):
         
         # Cross attention with image features
         cross_out, _ = self.cross_attn(
-            x, image_features, image_features
+            x, image_features, image_features,
+            need_weights=False,  # Faster computation
+            attn_mask=None  # No masking needed for single-step attention
         )
         x = x + self.dropout(cross_out)
         x = self.cross_attn_norm(x)
@@ -264,7 +268,7 @@ class Decoder(nn.Module):
             curr_ids = torch.cat([curr_ids, next_tokens.unsqueeze(1)], dim=1)
             
             # Early stopping if all sequences have end token
-            if early_stopping and (curr_ids == eos_token_id).any(dim=1).all():
+            if early_stopping and (next_tokens == eos_token_id).any():
                 break
         
         return curr_ids
@@ -277,6 +281,10 @@ class Decoder(nn.Module):
         key_padding_mask=None
     ):
         """Forward pass through decoder"""
+        # Ensure image features have correct shape for attention
+        if len(image_features.shape) == 2:
+            image_features = image_features.unsqueeze(1)  # [batch, 1, hidden]
+        
         # Get embeddings
         text_embeds = self.token_embedding(text_tokens)
         
