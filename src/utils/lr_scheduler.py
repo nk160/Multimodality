@@ -1,5 +1,6 @@
 import math
 import torch
+from typing import List
 
 class WarmupCosineScheduler:
     def __init__(
@@ -31,4 +32,14 @@ class WarmupCosineScheduler:
     def get_cosine_lr(self):
         progress = (self.current_step - self.warmup_steps) / (self.total_steps - self.warmup_steps)
         return self.min_lr + (self.optimizer.param_groups[0]['lr'] - self.min_lr) * \
-               0.5 * (1 + math.cos(math.pi * progress)) 
+               0.5 * (1 + math.cos(math.pi * progress))
+
+    def get_lr(self) -> float:
+        """Get current learning rate"""
+        if self.current_step < self.warmup_steps:
+            return self.get_warmup_lr()
+        return self.get_cosine_lr()
+
+    def get_last_lr(self) -> List[float]:
+        """Return last computed learning rate"""
+        return [self.get_lr()] 

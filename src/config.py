@@ -21,9 +21,9 @@ class ModelConfig:
 class DataConfig:
     # Dataset configurations
     dataset_name: str = "nlphuji/flickr30k"
-    train_batch_size: int = 32
-    eval_batch_size: int = 32
-    num_workers: int = 4
+    train_batch_size: int = 64
+    eval_batch_size: int = 64
+    num_workers: int = 8
     
     # Image configurations
     image_size: int = 224
@@ -35,10 +35,14 @@ class DataConfig:
 @dataclass
 class TrainingConfig:
     # Training parameters
-    num_epochs: int = 30
+    num_epochs: int = 6
     learning_rate: float = 1e-4
     weight_decay: float = 0.01
-    warmup_steps: int = 1000
+    warmup_steps: int = 100
+    save_every: int = 2
+    patience: int = 2
+    clip_gradient: float = 1.0
+    full_validate_every: int = 6
     
     # Device
     device: str = "cuda" if torch.cuda.is_available() else "cpu"

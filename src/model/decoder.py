@@ -47,13 +47,15 @@ class DecoderLayer(nn.Module):
         self.dropout = nn.Dropout(dropout)
 
     def forward(self, x: torch.Tensor, image_features: torch.Tensor, 
-               attention_mask: Optional[torch.Tensor] = None) -> torch.Tensor:
+               attention_mask: Optional[torch.Tensor] = None,
+               key_padding_mask: Optional[torch.Tensor] = None) -> torch.Tensor:
         """
         Forward pass for a single decoder layer
         Args:
             x: Text features [batch_size, seq_len, hidden_size]
             image_features: Image features from CLIP [batch_size, num_patches, hidden_size]
-            attention_mask: Mask for self-attention [batch_size, seq_len, seq_len]
+            attention_mask: Causal mask for self-attention [seq_len, seq_len]
+            key_padding_mask: Padding mask [batch_size, seq_len]
         """
         # 1. Self Attention with residual connection
         attn_output, _ = self.self_attn(
@@ -61,6 +63,7 @@ class DecoderLayer(nn.Module):
             key=x,
             value=x,
             attn_mask=attention_mask,
+            key_padding_mask=key_padding_mask,
             need_weights=False
         )
         x = self.norm1(x + self.dropout(attn_output))
@@ -127,6 +130,7 @@ class Decoder(nn.Module):
         image_features: torch.Tensor,
         text_tokens: torch.Tensor,
         attention_mask: Optional[torch.Tensor] = None,
+        key_padding_mask: Optional[torch.Tensor] = None,
         return_probs: bool = False
     ) -> Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]:
         """
@@ -135,6 +139,7 @@ class Decoder(nn.Module):
             image_features: CLIP image features [batch_size, num_patches, hidden_size]
             text_tokens: Input token ids [batch_size, seq_len]
             attention_mask: Mask for self-attention [batch_size, seq_len, seq_len]
+            key_padding_mask: Mask for cross-attention [batch_size, seq_len]
             return_probs: Whether to return probability distribution over vocabulary
         Returns:
             logits or (logits, probs) if return_probs is True
@@ -163,7 +168,7 @@ class Decoder(nn.Module):
         
         # Pass through each decoder layer
         for layer in self.layers:
-            x = layer(x, image_features, attention_mask)
+            x = layer(x, image_features, attention_mask, key_padding_mask)
         
         # Get logits
         logits = self.output_projection(x)
