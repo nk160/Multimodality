@@ -56,6 +56,16 @@ class Trainer:
         
     def compute_metrics(self, predictions: List[str], references: List[str]) -> Dict[str, float]:
         """Compute BLEU and ROUGE scores"""
+        # Skip empty predictions
+        if not any(predictions):  # If all predictions are empty
+            print("\nWarning: Empty predictions detected!")
+            return {
+                "bleu": 0.0,
+                "rouge1": 0.0,
+                "rouge2": 0.0,
+                "rougeL": 0.0
+            }
+        
         bleu_score = self.bleu.compute(predictions=predictions, references=references)
         rouge_score = self.rouge.compute(predictions=predictions, references=references)
         

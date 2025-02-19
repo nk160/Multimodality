@@ -110,6 +110,10 @@ class ImageCaptioningTransformer(nn.Module):
         # Get encoder states for images
         encoder_states = self.encode_images(images)
         
+        # Ensure encoder states have correct shape
+        if len(encoder_states.shape) == 2:
+            encoder_states = encoder_states.unsqueeze(0)  # Add sequence length dimension
+        
         # Generate with controlled parameters
         return self.decoder.generate(
             encoder_hidden_states=encoder_states,
@@ -118,7 +122,7 @@ class ImageCaptioningTransformer(nn.Module):
             eos_token_id=self.tokenizer.eos_token_id,
             pad_token_id=self.tokenizer.pad_token_id,
             do_sample=True,
-            temperature=0.7,
+            temperature=0.9,  # Increase temperature for more diversity
             top_k=50,
             no_repeat_ngram_size=3,
             num_return_sequences=1,
