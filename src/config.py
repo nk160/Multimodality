@@ -1,4 +1,4 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Optional
 import torch
 
@@ -50,12 +50,12 @@ class TrainingConfig:
 
 @dataclass
 class Config:
-    model: ModelConfig = ModelConfig()
-    data: DataConfig = DataConfig()
-    training: TrainingConfig = TrainingConfig()
+    model: ModelConfig = field(default_factory=ModelConfig)
+    data: DataConfig = field(default_factory=DataConfig)
+    training: TrainingConfig = field(default_factory=TrainingConfig)
     
     # Paths
     output_dir: str = "outputs"
     checkpoint_dir: str = "checkpoints"
-    
+
 config = Config()
