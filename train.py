@@ -189,23 +189,23 @@ def train():
     scheduler = WarmupCosineScheduler(
         optimizer,
         warmup_steps=config.training.warmup_steps,
-        total_steps=config.training.num_epochs * len(get_dataloader("test"))
+        total_steps=config.training.num_epochs * len(get_dataloader("train"))
     )
     
     # Training loop
     for epoch in range(config.training.num_epochs):
         print(f"\nEpoch {epoch+1}/{config.training.num_epochs}")
         
-        # Training phase - use test split
-        train_loss = trainer.train_epoch(model, optimizer, scheduler, split="test")
+        # Training phase - use train split
+        train_loss = trainer.train_epoch(model, optimizer, scheduler, split="train")
         
-        # Quick validation - use test split
-        val_metrics = trainer.validate(model, split="test", max_samples=500)
+        # Quick validation - use validation split
+        val_metrics = trainer.validate(model, split="validation", max_samples=500)
         
         # Full validation every N epochs
         if epoch % config.training.full_validate_every == 0:
             print("\nRunning full validation...")
-            full_metrics = trainer.validate(model, split="test", full_validation=True)
+            full_metrics = trainer.validate(model, split="validation", full_validation=True)
             # Log with different names to distinguish in W&B
             wandb.log({f"full_{k}": v for k, v in full_metrics.items()})
         
@@ -216,6 +216,16 @@ def train():
             **val_metrics
         }
         wandb.log(metrics)
+        
+        # Print metrics summary
+        print(f"\nEpoch {epoch+1} Summary:")
+        print(f"Train Loss: {train_loss:.4f}")
+        print(f"Val Loss: {val_metrics['val_loss']:.4f}")
+        if 'bleu' in val_metrics:
+            print(f"BLEU Score: {val_metrics['bleu']:.4f}")
+            print(f"ROUGE-1: {val_metrics['rouge1']:.4f}")
+            print(f"ROUGE-2: {val_metrics['rouge2']:.4f}")
+            print(f"ROUGE-L: {val_metrics['rougeL']:.4f}")
         
         # Early stopping check
         if val_metrics['val_loss'] < trainer.best_val_loss:

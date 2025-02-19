@@ -15,16 +15,24 @@ from src.config import config
 class Flickr30kDataset(Dataset):
     """Dataset class for Flickr30k"""
     
-    def __init__(self, split: str = "test"):
+    def __init__(self, split: str = "train"):
         """
         Initialize the dataset
         Args:
-            split (str): Dataset split (currently only 'test' is available)
+            split (str): Dataset split ('train', 'validation', 'test')
         """
-        if split != "test":
-            raise ValueError(f"Only 'test' split is available for {config.data.dataset_name}")
+        # Map our split names to dataset split names
+        split_mapping = {
+            "train": "train",
+            "validation": "validation",
+            "test": "test"
+        }
         
-        self.dataset = load_dataset(config.data.dataset_name, split=split)
+        self.dataset = load_dataset(
+            "facebook/flickr30k",
+            split=split_mapping[split]
+        )
+        
         self.tokenizer = CLIPTokenizer.from_pretrained(config.model.clip_model_name)
         
         # Image preprocessing
@@ -74,11 +82,11 @@ class Flickr30kDataset(Dataset):
             'caption': caption  # Keep original caption for reference
         }
 
-def get_dataloader(split: str = "test") -> DataLoader:
+def get_dataloader(split: str = "train") -> DataLoader:
     """
     Create a DataLoader for the specified split
     Args:
-        split (str): Dataset split (currently only 'test' is available)
+        split (str): Dataset split ('train', 'validation', 'test')
     Returns:
         DataLoader for the specified split
     """
