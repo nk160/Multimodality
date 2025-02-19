@@ -112,7 +112,7 @@ class Trainer:
 
     def validate(self, model: ImageCaptioningTransformer, 
                 split: str = "validation",
-                max_samples: int = 1000,  # Regular validation subset
+                max_samples: int = 1000,
                 full_validation: bool = False) -> Dict[str, float]:
         """Optimized validation with async metrics"""
         model.eval()
@@ -122,15 +122,22 @@ class Trainer:
         references = []
         samples_processed = 0
         
-        # Determine max samples
-        max_samples = None if full_validation else max_samples
+        # Debug: Print first 10 pairs
+        debug_count = 0
         
         with torch.no_grad():
             for batch in tqdm(val_loader, desc="Validation"):
                 if max_samples and samples_processed >= max_samples:
                     break
                     
-                # Basic validation (loss computation)
+                # Generate captions
+                generated_ids = model.generate(
+                    images=batch['image'].to(self.device),
+                    max_length=config.data.max_length
+                )
+                batch_predictions = self.preprocessor.decode(generated_ids)
+                
+                # Compute validation loss
                 outputs = model(
                     images=batch['image'].to(self.device),
                     text_tokens=batch['input_ids'].to(self.device),
@@ -138,16 +145,20 @@ class Trainer:
                 )
                 val_loss += outputs['loss'].item()
                 
-                # Generate captions asynchronously for metrics
-                if samples_processed % 100 == 0:  # Generate every 100 samples
-                    generated_ids = model.generate(
-                        images=batch['image'].to(self.device),
-                        max_length=config.data.max_length
-                    )
-                    predictions.extend(self.preprocessor.decode(generated_ids))
-                    references.extend(batch['caption'])
-                
+                # Collect predictions and references for metrics
+                predictions.extend(batch_predictions)
+                references.extend(batch['caption'])
                 samples_processed += batch['image'].size(0)
+                
+                # Debug: Print first 10 pairs
+                if debug_count < 10:
+                    print("\nDebug Output:")
+                    for pred, ref in zip(batch_predictions, batch['caption']):
+                        print(f"\nPredicted: {pred}")
+                        print(f"Reference: {ref}")
+                        debug_count += 1
+                        if debug_count >= 10:
+                            break
         
         # Quick metrics for monitoring
         metrics = {
