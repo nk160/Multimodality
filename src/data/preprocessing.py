@@ -14,7 +14,15 @@ class DataPreprocessor:
     """Handles all data preprocessing for images and text"""
     
     def __init__(self):
-        self.tokenizer = CLIPTokenizer.from_pretrained(config.model.clip_model_name)
+        self.tokenizer = CLIPTokenizer.from_pretrained("openai/clip-vit-base-patch32")
+        
+        # Debug tokenizer configuration
+        print("\nTokenizer Configuration:")
+        print("Special tokens:", self.tokenizer.special_tokens_map)
+        print("Vocabulary size:", self.tokenizer.vocab_size)
+        print("Start token:", self.tokenizer.bos_token_id)
+        print("End token:", self.tokenizer.eos_token_id)
+        print("Pad token:", self.tokenizer.pad_token_id)
         
         # Image preprocessing pipeline
         self.image_transform = transforms.Compose([

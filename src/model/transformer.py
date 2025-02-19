@@ -18,12 +18,14 @@ class ImageCaptioningTransformer(nn.Module):
         hidden_size: Optional[int] = None,
         decoder_layers: Optional[int] = 6,
         decoder_attention_heads: Optional[int] = 8,
-        dropout: Optional[float] = 0.1
+        dropout: Optional[float] = 0.1,
+        tokenizer=None
     ):
         super().__init__()
         
         # Initialize encoder
         self.encoder = CLIPEncoder()
+        self.tokenizer = tokenizer
         
         # Use encoder's hidden size if not specified
         if hidden_size is None:
@@ -102,32 +104,29 @@ class ImageCaptioningTransformer(nn.Module):
             
         return outputs
     
-    def generate(
-        self,
-        images: torch.Tensor,
-        max_length: Optional[int] = None,
-        temperature: float = 1.0
-    ) -> torch.Tensor:
-        """
-        Generate captions for images
-        Args:
-            images: Input images [batch_size, 3, H, W]
-            max_length: Maximum generation length
-            temperature: Sampling temperature
-        Returns:
-            Generated token ids
-        """
-        # Get image features
-        image_features = self.encoder(images)
+    def generate(self, images, max_length=128):
+        """Generate captions for images"""
+        # Get encoder states for images
+        encoder_states = self.encode_images(images)
         
-        # Generate captions using decoder
-        generated_ids = self.decoder.generate(
-            image_features=image_features,
+        # Generate with controlled parameters
+        return self.decoder.generate(
+            encoder_hidden_states=encoder_states,
             max_length=max_length,
-            temperature=temperature
+            bos_token_id=self.tokenizer.bos_token_id,
+            eos_token_id=self.tokenizer.eos_token_id,
+            pad_token_id=self.tokenizer.pad_token_id,
+            do_sample=True,
+            temperature=0.7,
+            top_k=50,
+            no_repeat_ngram_size=3,
+            num_return_sequences=1,
+            early_stopping=True
         )
-        
-        return generated_ids
+    
+    def encode_images(self, images):
+        """Encode images using CLIP encoder"""
+        return self.encoder(images)
     
     def save_pretrained(self, path: str):
         """Save model to path"""

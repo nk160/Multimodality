@@ -92,43 +92,6 @@ class Flickr30kDataset(Dataset):
             'caption': caption  # Keep original caption for reference
         }
 
-    def validate(self, model: ImageCaptioningTransformer, 
-                split: str = "validation",
-                max_samples: int = 1000,
-                full_validation: bool = False) -> Dict[str, float]:
-        """Optimized validation with async metrics"""
-        model.eval()
-        val_loader = get_dataloader(split)
-        val_loss = 0
-        predictions = []
-        references = []
-        samples_processed = 0
-        
-        # Debug: Print first 10 pairs
-        debug_count = 0
-        
-        with torch.no_grad():
-            for batch in tqdm(val_loader, desc="Validation"):
-                if max_samples and samples_processed >= max_samples:
-                    break
-                    
-                # Generate captions
-                generated_ids = model.generate(
-                    images=batch['image'].to(self.device),
-                    max_length=config.data.max_length
-                )
-                batch_predictions = self.preprocessor.decode(generated_ids)
-                
-                # Debug: Print first 10 pairs
-                if debug_count < 10:
-                    print("\nDebug Output:")
-                    for pred, ref in zip(batch_predictions, batch['caption']):
-                        print(f"\nPredicted: {pred}")
-                        print(f"Reference: {ref}")
-                        debug_count += 1
-                        if debug_count >= 10:
-                            break
-
 def get_dataloader(split: str = "train") -> DataLoader:
     """
     Create a DataLoader for the specified split

@@ -186,7 +186,8 @@ def train():
         hidden_size=config.model.hidden_size,
         decoder_layers=config.model.decoder_layers,
         decoder_attention_heads=config.model.decoder_attention_heads,
-        dropout=config.model.dropout
+        dropout=config.model.dropout,
+        tokenizer=trainer.preprocessor.tokenizer
     ).to(trainer.device)
     
     # Create optimizer
