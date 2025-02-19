@@ -223,7 +223,7 @@ class Decoder(nn.Module):
         eos_token_id,
         pad_token_id,
         do_sample=True,
-        temperature=0.7,
+        temperature=0.9,
         top_k=50,
         no_repeat_ngram_size=3,
         num_return_sequences=1,
@@ -232,6 +232,10 @@ class Decoder(nn.Module):
         """Generate text tokens given image features"""
         batch_size = encoder_hidden_states.size(0)
         device = encoder_hidden_states.device
+        
+        # Debug prints
+        print(f"Encoder states shape: {encoder_hidden_states.shape}")
+        print(f"Start token: {bos_token_id}")
         
         # Initialize sequence with start token
         curr_ids = torch.full((batch_size, 1), bos_token_id, dtype=torch.long, device=device)
@@ -242,6 +246,7 @@ class Decoder(nn.Module):
                 image_features=encoder_hidden_states,
                 text_tokens=curr_ids
             )
+            print(f"Output logits shape: {outputs.shape}")
             next_token_logits = outputs[:, -1, :] / temperature
             
             if do_sample:
@@ -251,6 +256,9 @@ class Decoder(nn.Module):
                 next_tokens = top_k_indices[torch.arange(batch_size), torch.multinomial(next_token_probs, 1).squeeze()]
             else:
                 next_tokens = torch.argmax(next_token_logits, dim=-1)
+            
+            # Debug: Print token values
+            print(f"Generated token: {next_tokens.tolist()}")
             
             # Add predicted tokens
             curr_ids = torch.cat([curr_ids, next_tokens.unsqueeze(1)], dim=1)
