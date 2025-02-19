@@ -20,7 +20,7 @@ class ModelConfig:
 @dataclass
 class DataConfig:
     # Dataset configurations
-    dataset_name: str = "facebook/flickr30k"  # Official version
+    dataset_name: str = "nlphuji/flickr30k"  # Known working version
     train_batch_size: int = 64
     eval_batch_size: int = 64
     num_workers: int = 8

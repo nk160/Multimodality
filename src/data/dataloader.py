@@ -21,16 +21,9 @@ class Flickr30kDataset(Dataset):
         Args:
             split (str): Dataset split ('train', 'validation', 'test')
         """
-        # Map our split names to dataset split names
-        split_mapping = {
-            "train": "train",
-            "validation": "validation",
-            "test": "test"
-        }
-        
         self.dataset = load_dataset(
-            "facebook/flickr30k",
-            split=split_mapping[split]
+            config.data.dataset_name,
+            split="test"  # Only test split available
         )
         
         self.tokenizer = CLIPTokenizer.from_pretrained(config.model.clip_model_name)
@@ -42,6 +35,22 @@ class Flickr30kDataset(Dataset):
             transforms.Normalize(mean=[0.485, 0.456, 0.406], 
                                std=[0.229, 0.224, 0.225])
         ])
+
+        # Create splits from test set
+        total_size = len(self.dataset)
+        indices = torch.randperm(total_size).tolist()
+        
+        train_size = int(total_size * 0.8)
+        val_size = int(total_size * 0.1)
+        
+        if split == "train":
+            split_indices = indices[:train_size]
+        elif split == "validation":
+            split_indices = indices[train_size:train_size+val_size]
+        else:  # test
+            split_indices = indices[train_size+val_size:]
+        
+        self.dataset = self.dataset.select(split_indices)
 
     def __len__(self) -> int:
         return len(self.dataset)
