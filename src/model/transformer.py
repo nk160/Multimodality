@@ -137,3 +137,14 @@ class ImageCaptioningTransformer(nn.Module):
         """Load model from path"""
         self.load_state_dict(torch.load(path))
         return self
+
+class DecoderBlock(nn.Module):
+    def __init__(self, config):
+        super().__init__()
+        # ... other layers ...
+        self.feed_forward = nn.Sequential(
+            nn.Linear(config.hidden_size, config.decoder_ffn_dim),
+            nn.GELU(),
+            nn.Dropout(config.dropout),
+            nn.Linear(config.decoder_ffn_dim, config.hidden_size)
+        )

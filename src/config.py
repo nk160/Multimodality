@@ -11,8 +11,8 @@ class ModelConfig:
     num_attention_heads: int = 12
     
     # Decoder configurations
-    decoder_layers: int = 6
-    decoder_attention_heads: int = 8
+    decoder_layers: int = 8
+    decoder_attention_heads: int = 12
     decoder_ffn_dim: int = 2048
     max_position_embeddings: int = 512
     dropout: float = 0.1
@@ -36,11 +36,11 @@ class DataConfig:
 class TrainingConfig:
     # Training parameters
     num_epochs: int = 6
-    learning_rate: float = 1e-4
+    learning_rate: float = 2e-4
     weight_decay: float = 0.01
-    warmup_steps: int = 100
+    warmup_steps: int = 200
     save_every: int = 2
-    patience: int = 2
+    patience: int = 1
     clip_gradient: float = 1.0
     full_validate_every: int = 6
     
