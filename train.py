@@ -6,6 +6,7 @@ import numpy as np
 from pathlib import Path
 from typing import Dict, List
 import evaluate
+import math
 
 from src.model.transformer import ImageCaptioningTransformer
 from src.data.preprocessing import DataPreprocessor
@@ -105,7 +106,10 @@ class Trainer:
             # Backward pass
             optimizer.zero_grad()
             loss.backward()
-            clip_gradients(model)
+            
+            # Clip gradients
+            torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
+            
             optimizer.step()
             scheduler.step()
             
@@ -121,9 +125,9 @@ class Trainer:
         return epoch_loss / len(train_loader)
 
     def validate(self, model: ImageCaptioningTransformer, 
-                split: str = "validation",
-                max_samples: int = 1000,
-                full_validation: bool = False) -> Dict[str, float]:
+                 split: str = "validation",
+                 max_samples: int = 1000,
+                 full_validation: bool = False) -> Dict[str, float]:
         """Optimized validation with async metrics"""
         model.eval()
         val_loader = get_dataloader(split)
@@ -132,20 +136,31 @@ class Trainer:
         references = []
         samples_processed = 0
         
-        # Debug: Print first 10 pairs
-        debug_count = 0
+        print("\n=== Sample Predictions vs Ground Truth ===\n")
         
         with torch.no_grad():
-            for batch in tqdm(val_loader, desc="Validation"):
+            for i, batch in enumerate(tqdm(val_loader, desc="Validation")):
                 if max_samples and samples_processed >= max_samples:
                     break
                     
+                # Debug print
+                print("\nDecoding tokens...")
+                
                 # Generate captions
                 generated_ids = model.generate(
                     images=batch['image'].to(self.device),
                     max_length=config.data.max_length
                 )
+                
+                # Debug print
+                print(f"Generated IDs shape: {generated_ids.shape}")
+                print(f"Sample IDs: {generated_ids[0]}")
+                
                 batch_predictions = self.preprocessor.decode(generated_ids)
+                
+                # Debug print
+                print(f"Decoded prediction: {batch_predictions[0]}")
+                print(f"Ground truth: {batch['caption'][0]}")
                 
                 # Compute validation loss
                 outputs = model(
@@ -155,31 +170,43 @@ class Trainer:
                 )
                 val_loss += outputs['loss'].item()
                 
-                # Collect predictions and references for metrics
+                # Collect predictions and references
                 predictions.extend(batch_predictions)
                 references.extend(batch['caption'])
                 samples_processed += batch['image'].size(0)
-                
-                # Debug: Print first 10 pairs
-                if debug_count < 10:
-                    print("\nDebug Output:")
-                    for pred, ref in zip(batch_predictions, batch['caption']):
-                        print(f"\nPredicted: {pred}")
-                        print(f"Reference: {ref}")
-                        debug_count += 1
-                        if debug_count >= 10:
-                            break
         
-        # Quick metrics for monitoring
+        # Compute metrics
         metrics = {
             'val_loss': val_loss / (samples_processed / batch['image'].size(0))
         }
         
-        # Async compute full metrics if we have predictions
         if predictions:
             metrics.update(self.compute_metrics(predictions[:100], references[:100]))
         
         return metrics
+
+class WarmupCosineScheduler:
+    def __init__(self, optimizer, warmup_steps, total_steps, min_lr=1e-7):
+        self.optimizer = optimizer
+        self.warmup_steps = warmup_steps
+        self.total_steps = total_steps
+        self.min_lr = min_lr
+        self.current_step = 0
+        
+    def step(self):
+        self.current_step += 1
+        lr = self.get_lr()
+        for param_group in self.optimizer.param_groups:
+            param_group['lr'] = lr
+            
+    def get_lr(self):
+        # Linear warmup
+        if self.current_step < self.warmup_steps:
+            return self.current_step / self.warmup_steps
+            
+        # Cosine decay
+        progress = (self.current_step - self.warmup_steps) / (self.total_steps - self.warmup_steps)
+        return self.min_lr + (0.5 * (1 + math.cos(math.pi * progress)))
 
 def train():
     """Main training function"""
@@ -200,18 +227,25 @@ def train():
         tokenizer=trainer.preprocessor.tokenizer
     ).to(trainer.device)
     
-    # Create optimizer
+    # Create optimizer with lower initial learning rate
     optimizer = AdamW(
         model.parameters(),
-        lr=config.training.learning_rate,
-        weight_decay=config.training.weight_decay
+        lr=1e-7,  # Start very small
+        weight_decay=config.training.weight_decay,
+        betas=(0.9, 0.999),
+        eps=1e-8
     )
     
-    # Create scheduler - using test split for steps calculation
+    # Calculate steps
+    num_training_steps = config.training.num_epochs * len(get_dataloader("train"))
+    warmup_steps = num_training_steps // 10  # 10% warmup
+    
+    # Create scheduler with warmup
     scheduler = WarmupCosineScheduler(
         optimizer,
-        warmup_steps=config.training.warmup_steps,
-        total_steps=config.training.num_epochs * len(get_dataloader("train"))
+        warmup_steps=warmup_steps,
+        total_steps=num_training_steps,
+        min_lr=1e-7
     )
     
     # Training loop

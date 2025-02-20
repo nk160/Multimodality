@@ -3,6 +3,7 @@ import torch.nn as nn
 from typing import Dict, Optional, Tuple
 import torch.nn.functional as F
 from src.config import config
+import math
 
 from .encoder import CLIPEncoder
 import wandb
@@ -147,12 +148,28 @@ class ImageCaptioningTransformer(nn.Module):
 class DecoderBlock(nn.Module):
     def __init__(self, hidden_size, num_heads, dropout):
         super().__init__()
-        # Self attention
-        self.self_attn = nn.MultiheadAttention(hidden_size, num_heads, dropout=dropout)
+        self.hidden_size = hidden_size
+        self.num_heads = num_heads
+        
+        # Calculate attention scaling
+        self.head_dim = hidden_size // num_heads
+        self.scale = self.head_dim ** -0.5  # Standard transformer scaling
+        
+        # Initialize attention layers with proper scaling
+        std = (2.0 / (5 * hidden_size)) ** 0.5  # Xavier/Glorot initialization
+        
+        # Self attention layers
+        self.self_attn_query = nn.Linear(hidden_size, hidden_size)
+        self.self_attn_key = nn.Linear(hidden_size, hidden_size)
+        self.self_attn_value = nn.Linear(hidden_size, hidden_size)
+        self.self_attn_out = nn.Linear(hidden_size, hidden_size)
         self.self_attn_norm = nn.LayerNorm(hidden_size)
         
-        # Cross attention
-        self.cross_attn = nn.MultiheadAttention(hidden_size, num_heads, dropout=dropout)
+        # Cross attention layers
+        self.cross_attn_query = nn.Linear(hidden_size, hidden_size)
+        self.cross_attn_key = nn.Linear(hidden_size, hidden_size)
+        self.cross_attn_value = nn.Linear(hidden_size, hidden_size)
+        self.cross_attn_out = nn.Linear(hidden_size, hidden_size)
         self.cross_attn_norm = nn.LayerNorm(hidden_size)
         
         # Feed forward
@@ -163,46 +180,154 @@ class DecoderBlock(nn.Module):
             nn.Linear(hidden_size * 4, hidden_size)
         )
         self.ff_norm = nn.LayerNorm(hidden_size)
+        
         self.dropout = nn.Dropout(dropout)
+        
+        # Initialize self attention weights
+        nn.init.normal_(self.self_attn_query.weight, std=std)
+        nn.init.normal_(self.self_attn_key.weight, std=std)
+        nn.init.normal_(self.self_attn_value.weight, std=std)
+        nn.init.normal_(self.self_attn_out.weight, std=std)
+        
+        # Initialize cross attention weights
+        nn.init.normal_(self.cross_attn_query.weight, std=std)
+        nn.init.normal_(self.cross_attn_key.weight, std=std)
+        nn.init.normal_(self.cross_attn_value.weight, std=std)
+        nn.init.normal_(self.cross_attn_out.weight, std=std)
+        
+        # Initialize feed forward weights
+        nn.init.normal_(self.feed_forward[0].weight, std=std)  # First linear layer
+        nn.init.normal_(self.feed_forward[3].weight, std=std)  # Second linear layer
+        
+        # Initialize all biases to zero
+        nn.init.zeros_(self.self_attn_query.bias)
+        nn.init.zeros_(self.self_attn_key.bias)
+        nn.init.zeros_(self.self_attn_value.bias)
+        nn.init.zeros_(self.self_attn_out.bias)
+        nn.init.zeros_(self.cross_attn_query.bias)
+        nn.init.zeros_(self.cross_attn_key.bias)
+        nn.init.zeros_(self.cross_attn_value.bias)
+        nn.init.zeros_(self.cross_attn_out.bias)
+        
+        # Add Pre-LN layers
+        self.pre_self_norm = nn.LayerNorm(hidden_size)
+        self.pre_cross_norm = nn.LayerNorm(hidden_size)
+        self.pre_ff_norm = nn.LayerNorm(hidden_size)
 
     def forward(self, x, image_features, attention_mask=None, key_padding_mask=None):
-        # Transpose for attention operations
-        x = x.transpose(0, 1)  # [seq_len, batch_size, hidden_size]
-        image_features = image_features.transpose(0, 1)  # [seq_len, batch_size, hidden_size]
+        batch_size = x.shape[0]
         
-        # Self attention
-        attn_out, _ = self.self_attn(
-            x, x, x,
-            attn_mask=attention_mask,
-            key_padding_mask=key_padding_mask
-        )
-        x = x + self.dropout(attn_out)
-        x = self.self_attn_norm(x)
+        # Scale inputs to prevent explosion
+        x = x * 0.1
+        image_features = image_features * 0.1
         
-        # Cross attention with image features
-        cross_out, _ = self.cross_attn(
-            x, image_features, image_features,
-            need_weights=False,  # Faster computation
-            attn_mask=None  # No masking needed for single-step attention
-        )
+        # Pre-LN for self attention
+        normed_x = self.pre_self_norm(x)
+        
+        # Self attention with numerical stability
+        self_q = self.self_attn_query(normed_x)
+        self_k = self.self_attn_key(normed_x)
+        self_v = self.self_attn_value(normed_x)
+        
+        # Reshape for multi-head self attention
+        self_q = self_q.view(batch_size, -1, self.num_heads, self.head_dim).transpose(1, 2)
+        self_k = self_k.view(batch_size, -1, self.num_heads, self.head_dim).transpose(1, 2)
+        self_v = self_v.view(batch_size, -1, self.num_heads, self.head_dim).transpose(1, 2)
+        
+        # Self attention with stable softmax
+        self_attn = torch.matmul(self_q, self_k.transpose(-2, -1)) * self.scale
+        if attention_mask is not None:
+            self_attn = self_attn.masked_fill(attention_mask == 0, -1e4)  # Use finite value
+        self_attn = torch.softmax(self_attn, dim=-1)
+        self_attn = torch.nan_to_num(self_attn, 0.0)  # Replace NaNs with 0
+        self_attn = self.dropout(self_attn)
+        
+        # Get self attention output
+        self_output = torch.matmul(self_attn, self_v)
+        self_output = self_output.transpose(1, 2).contiguous().view(batch_size, -1, self.hidden_size)
+        self_output = self.self_attn_out(self_output)
+        
+        # Debug prints for self attention
+        print("\nSelf Attention Stats:")
+        print(f"Self attention weights mean: {self_attn.mean():.4f}")
+        print(f"Self attention weights std: {self_attn.std():.4f}")
+        print(f"Self attention output mean: {self_output.mean():.4f}")
+        print(f"Self attention output std: {self_output.std():.4f}")
+        
+        # Add & Norm for self attention (residual only)
+        x = x + self.dropout(self_output)
+        
+        # Pre-LN for cross attention
+        normed_x = self.pre_cross_norm(x)
+        
+        # Cross attention with stability fixes
+        q = self.cross_attn_query(normed_x)
+        k = self.cross_attn_key(image_features)
+        v = self.cross_attn_value(image_features)
+        
+        # Reshape for multi-head attention
+        q = q.view(batch_size, -1, self.num_heads, self.head_dim).transpose(1, 2)
+        k = k.view(batch_size, -1, self.num_heads, self.head_dim).transpose(1, 2)
+        v = v.view(batch_size, -1, self.num_heads, self.head_dim).transpose(1, 2)
+        
+        # Scaled dot-product attention with stability
+        attn_weights = torch.matmul(q, k.transpose(-2, -1)) * self.scale
+        attn_weights = torch.softmax(attn_weights, dim=-1)  # Use torch.softmax
+        attn_weights = torch.nan_to_num(attn_weights, 0.0)  # Replace NaNs
+        attn_weights = self.dropout(attn_weights)
+        
+        # Get attention output
+        attn_output = torch.matmul(attn_weights, v)
+        
+        # Reshape and project output
+        attn_output = attn_output.transpose(1, 2).contiguous().view(batch_size, -1, self.hidden_size)
+        cross_out = self.cross_attn_out(attn_output)
+        
+        # Debug prints
+        print("\nCross Attention Stats:")
+        print(f"Cross attention weights mean: {attn_weights.mean():.4f}")
+        print(f"Cross attention weights std: {attn_weights.std():.4f}")
+        print(f"Cross attention output mean: {cross_out.mean():.4f}")
+        print(f"Cross attention output std: {cross_out.std():.4f}")
+        
+        # Add & Norm (residual only)
         x = x + self.dropout(cross_out)
-        x = self.cross_attn_norm(x)
         
-        # Feed forward
-        ff_out = self.feed_forward(x)
+        # Pre-LN for feed forward
+        normed_x = self.pre_ff_norm(x)
+        ff_out = self.feed_forward(normed_x)
         x = x + self.dropout(ff_out)
-        x = self.ff_norm(x)
         
-        # Transpose back
-        x = x.transpose(0, 1)  # [batch_size, seq_len, hidden_size]
-        return x
+        # Scale outputs back
+        return x * 10.0
 
 class Decoder(nn.Module):
     def __init__(self, vocab_size, hidden_size, num_layers, num_heads, dropout):
         super().__init__()
-        # Token and position embeddings
+        
+        # Initialize embeddings with proper scale
         self.token_embedding = nn.Embedding(vocab_size, hidden_size)
         self.position_embedding = nn.Embedding(config.model.max_position_embeddings, hidden_size)
+        
+        # Initialize with proper scale
+        nn.init.normal_(self.token_embedding.weight, mean=0.0, std=0.02)
+        nn.init.normal_(self.position_embedding.weight, mean=0.0, std=0.02)
+        
+        # Add debug prints for embeddings
+        print("\nToken Embedding Stats:")
+        print(f"Shape: {self.token_embedding.weight.shape}")
+        print(f"Mean: {self.token_embedding.weight.mean():.4f}")
+        print(f"Std: {self.token_embedding.weight.std():.4f}")
+        print(f"Min: {self.token_embedding.weight.min():.4f}")
+        print(f"Max: {self.token_embedding.weight.max():.4f}")
+        
+        # Add debug prints for position embeddings
+        print("\nPosition Embedding Stats:")
+        print(f"Shape: {self.position_embedding.weight.shape}")
+        print(f"Mean: {self.position_embedding.weight.mean():.4f}")
+        print(f"Std: {self.position_embedding.weight.std():.4f}")
+        print(f"Min: {self.position_embedding.weight.min():.4f}")
+        print(f"Max: {self.position_embedding.weight.max():.4f}")
         
         # Transformer blocks
         self.blocks = nn.ModuleList([
@@ -215,6 +340,11 @@ class Decoder(nn.Module):
         
         # Output layer
         self.output_layer = nn.Linear(hidden_size, vocab_size)
+        
+        # Initialize output layer with proper scaling
+        output_std = (2.0 / (hidden_size + vocab_size)) ** 0.5  # Xavier/Glorot for output
+        nn.init.normal_(self.output_layer.weight, std=output_std)
+        nn.init.zeros_(self.output_layer.bias)
         
         # Dropout
         self.dropout = nn.Dropout(dropout)
