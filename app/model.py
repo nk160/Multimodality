@@ -6,7 +6,8 @@ import requests
 from io import BytesIO
 from transformers import CLIPProcessor, CLIPModel
 from typing import Union, Optional
-from src.model.decoder import Decoder  # Import your decoder class
+from src.model.decoder import Decoder
+from src.config import config  # Add this import
 
 class ImageDescriptionModel:
     def __init__(self, clip_model, decoder_model):
@@ -68,8 +69,9 @@ def load_model():
         )
         
         decoder_model.load_state_dict(checkpoint['model_state_dict'])
+        print("Loaded checkpoint from", checkpoint_path)
     except FileNotFoundError:
-        print("Warning: No checkpoint found, initializing new decoder")
+        print("No checkpoint found, initializing new decoder")
         decoder_model = Decoder(
             vocab_size=config.model.vocab_size,
             hidden_size=config.model.hidden_size,
@@ -78,6 +80,9 @@ def load_model():
             max_length=config.data.max_length,
             dropout=config.model.dropout
         )
+    except Exception as e:
+        print(f"Error loading model: {str(e)}")
+        raise
     
     decoder_model.to(device)
     return ImageDescriptionModel(clip_model, decoder_model)
