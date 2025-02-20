@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Dict, List
 import evaluate
 import math
+import os
 
 from src.model.transformer import ImageCaptioningTransformer
 from src.data.preprocessing import DataPreprocessor
@@ -15,11 +16,23 @@ from src.utils.helpers import (
     setup_device, 
     move_batch_to_device,
     clip_gradients,
-    save_model_checkpoint,
     set_seed
 )
 from src.utils.lr_scheduler import WarmupCosineScheduler
 from src.config import config
+
+# Create checkpoint directory if it doesn't exist
+CHECKPOINT_DIR = os.path.join(os.path.dirname(__file__), "checkpoints")
+os.makedirs(CHECKPOINT_DIR, exist_ok=True)
+
+def save_model_checkpoint(model, optimizer, epoch, loss, path):
+    """Save model checkpoint with full state"""
+    torch.save({
+        'epoch': epoch,
+        'model_state_dict': model.state_dict(),
+        'optimizer_state_dict': optimizer.state_dict(),
+        'loss': loss,
+    }, path)
 
 class Trainer:
     def __init__(self):
@@ -294,7 +307,7 @@ def train():
                 optimizer=optimizer,
                 epoch=epoch,
                 loss=val_metrics['val_loss'],
-                path=Path(config.checkpoint_dir) / "best_model.pt"
+                path=Path(CHECKPOINT_DIR) / "best_model.pt"
             )
         else:
             trainer.patience_counter += 1
@@ -309,7 +322,7 @@ def train():
                 optimizer=optimizer,
                 epoch=epoch,
                 loss=val_metrics['val_loss'],
-                path=Path(config.checkpoint_dir) / f"checkpoint_epoch_{epoch+1}.pt"
+                path=Path(CHECKPOINT_DIR) / f"checkpoint_epoch_{epoch+1}.pt"
             )
     
     wandb.finish()

@@ -9,6 +9,7 @@ class ModelConfig:
     hidden_size: int = 768
     intermediate_size: int = 3072
     num_attention_heads: int = 12
+    vocab_size: int = 30522  # Default BERT vocab size, adjust if needed
     
     # Decoder configurations
     decoder_layers: int = 8
