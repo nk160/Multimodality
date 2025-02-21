@@ -9,13 +9,13 @@ class ModelConfig:
     hidden_size: int = 768
     intermediate_size: int = 3072
     num_attention_heads: int = 12
-    vocab_size: int = 30522  # Default BERT vocab size, adjust if needed
+    vocab_size: int = 49408  # Updated to match saved weights
     
     # Decoder configurations
     decoder_layers: int = 8
     decoder_attention_heads: int = 12
     decoder_ffn_dim: int = 2048
-    max_position_embeddings: int = 512
+    max_position_embeddings: int = 512  # Match saved weights
     dropout: float = 0.1
 
 @dataclass

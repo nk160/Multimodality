@@ -8,7 +8,9 @@ WORKDIR /app
 COPY requirements.txt .
 COPY src/ src/
 COPY app/ app/
-COPY checkpoints/ checkpoints/
+
+# Create checkpoints directory
+RUN mkdir -p checkpoints
 
 # Install dependencies
 RUN pip install --no-cache-dir -r requirements.txt

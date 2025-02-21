@@ -27,15 +27,18 @@ class PredictionOutput(BaseModel):
 @app.post("/generate-description", response_model=PredictionOutput)
 async def generate_description(input_data: PredictionInput):
     try:
-        result = model(
+        # Process the image and generate description
+        result = model.generate_description(  # Call the method directly instead of calling the model
             image_url=input_data.image_url,
             reference_text=input_data.ground_truth_description
         )
+        
         return PredictionOutput(
             generated_description=result['generated_text'],
             reference_description=input_data.ground_truth_description
         )
     except Exception as e:
+        print(f"Error in generate_description: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/upload-image-and-describe")
